@@ -1,94 +1,91 @@
-import os
-import subprocess
+import asyncio
 from telethon import TelegramClient, events, Button
+import os
 
-# Baca konfigurasi dari var.txt
+# Fungsi baca konfigurasi dari var.txt
 def load_config():
     config = {}
-    with open("kyt/var.txt", "r") as f:
+    with open("kyt/var.txt") as f:
         for line in f:
             if "=" in line:
-                key, value = line.strip().split("=", 1)
-                config[key] = value
+                key, val = line.strip().split("=", 1)
+                config[key.strip()] = val.strip().strip('"')
     return config
 
+# Load config
 config = load_config()
+BOT_TOKEN = config.get("BOT_TOKEN")
+ADMIN_ID = int(config.get("ADMIN", 0))
+MERCHANT_ID = config.get("MERCHANT_ID")
+API_KEY = config.get("API_KEY")
+DATA_QRIS = config.get("DATA_QRIS")
+NAMA_TOKO = config.get("NAMA_TOKO")
 
-API_ID = 123456  # Ganti dengan API_ID Telegram kamu
-API_HASH = "your_api_hash"  # Ganti dengan API_HASH Telegram kamu
-BOT_TOKEN = config["BOT_TOKEN"]
-ADMIN_ID = int(config["ADMIN"])
-NAMA_TOKO = config["NAMA_TOKO"]
+# API ID & HASH dummy (wajib diganti jika tidak pakai bot token-only mode)
+API_ID = 123456
+API_HASH = "0123456789abcdef0123456789abcdef"
 
-bot = TelegramClient("bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# Inisialisasi bot Telethon
+bot = TelegramClient("kytbot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
+# Cek apakah user adalah admin
+def is_admin(user_id):
+    return user_id == ADMIN_ID
 
+# /start command
 @bot.on(events.NewMessage(pattern="/start"))
 async def start(event):
-    if event.sender_id != ADMIN_ID:
-        await event.respond("❌ Kamu tidak punya izin untuk menggunakan bot ini.")
+    if not is_admin(event.sender_id):
+        await event.reply("❌ Kamu tidak diizinkan menggunakan bot ini.")
+        return
+    await event.reply(f"""
+📦 Bot Aktif!
+👤 Admin: `{ADMIN_ID}`
+🏪 Toko: *{NAMA_TOKO}*
+
+Gunakan perintah:
+/order_ssh - Order layanan SSH
+""", parse_mode="markdown")
+
+# /order_ssh menu
+@bot.on(events.NewMessage(pattern="/order_ssh"))
+async def order_ssh(event):
+    if not is_admin(event.sender_id):
+        await event.reply("❌ Kamu bukan admin.")
         return
 
     await event.respond(
-        f"👋 Selamat datang di bot {NAMA_TOKO}!\nGunakan menu di bawah:",
+        "📦 Pilih jenis layanan SSH:",
         buttons=[
-            [Button.inline("💻 Order SSH", data="order_ssh")],
+            [Button.inline("🎁 Trial SSH", data="trial_ssh"), Button.inline("➕ Buat SSH", data="create_ssh")],
+            [Button.inline("🔁 Perpanjang SSH", data="renew_ssh"), Button.inline("❌ Hapus SSH", data="delete_ssh")]
         ]
     )
 
+# Handle tombol inline
+@bot.on(events.CallbackQuery)
+async def callback(event):
+    data = event.data.decode()
+    user_id = event.sender_id
 
-@bot.on(events.CallbackQuery(data=b"order_ssh"))
-async def menu_order_ssh(event):
-    await event.edit(
-        "💻 *Menu SSH:*\nSilakan pilih layanan SSH yang tersedia.",
-        buttons=[
-            [Button.inline("🆕 Create", data="ssh_create"),
-             Button.inline("🧪 Trial", data="ssh_trial")],
-            [Button.inline("🗑️ Delete", data="ssh_delete")],
-            [Button.inline("🔙 Kembali", data="back_menu")]
-        ],
-        parse_mode="markdown"
-    )
+    if not is_admin(user_id):
+        await event.answer("❌ Kamu bukan admin.")
+        return
 
+    script_map = {
+        "trial_ssh": "kyt/scripts/trialssh",
+        "create_ssh": "kyt/scripts/addssh",
+        "renew_ssh": "kyt/scripts/renewssh",
+        "delete_ssh": "kyt/scripts/deletessh"
+    }
 
-@bot.on(events.CallbackQuery(data=b"back_menu"))
-async def back_menu(event):
-    await event.edit(
-        f"👋 Selamat datang kembali di bot {NAMA_TOKO}!",
-        buttons=[
-            [Button.inline("💻 Order SSH", data="order_ssh")],
-        ]
-    )
+    if data in script_map:
+        script_path = script_map[data]
+        await event.edit(f"🔄 Menjalankan `{data}` ...", parse_mode="markdown")
+        os.system(f"bash {script_path}")
+    else:
+        await event.answer("❓ Aksi tidak dikenal.")
 
-
-def run_script(script_path):
-    try:
-        result = subprocess.check_output(["bash", script_path], stderr=subprocess.STDOUT)
-        return result.decode()
-    except subprocess.CalledProcessError as e:
-        return f"❌ Error: {e.output.decode()}"
-
-
-@bot.on(events.CallbackQuery(data=b"ssh_create"))
-async def ssh_create(event):
-    await event.answer("Membuat akun SSH...")
-    output = run_script("kyt/scripts/create-ssh.sh")
-    await event.respond(f"✅ *Akun SSH berhasil dibuat:*\n\n`{output}`", parse_mode="markdown")
-
-
-@bot.on(events.CallbackQuery(data=b"ssh_trial"))
-async def ssh_trial(event):
-    await event.answer("Membuat akun trial SSH...")
-    output = run_script("kyt/scripts/trial-ssh.sh")
-    await event.respond(f"✅ *Trial SSH berhasil dibuat:*\n\n`{output}`", parse_mode="markdown")
-
-
-@bot.on(events.CallbackQuery(data=b"ssh_delete"))
-async def ssh_delete(event):
-    await event.answer("Menghapus akun SSH...")
-    output = run_script("kyt/scripts/delete-ssh.sh")
-    await event.respond(f"🗑️ *Akun SSH berhasil dihapus:*\n\n`{output}`", parse_mode="markdown")
-
-
-print("🤖 Bot berjalan...")
+# Jalankan bot
+print("🤖 Bot aktif dan menunggu perintah...")
 bot.run_until_disconnected()
