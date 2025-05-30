@@ -45,7 +45,7 @@ Silakan pilih menu:
 💳 QRIS Payment: {NAMA_TOKO}
 """
     )
-
+from kyt.handlers import order_ssh
 init_db()
 print("🤖 Bot sedang berjalan...")
 bot.run_until_disconnected()
