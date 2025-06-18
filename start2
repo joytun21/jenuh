@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# ========== Color Setup ==========
+green="\e[38;5;87m"
+red="\e[38;5;196m"
+neutral="\e[0m"
+blue="\e[38;5;130m"
+orange="\e[38;5;99m"
+yellow="\e[38;5;226m"
+bold_white="\e[1;37m"
+reset="\e[0m"
+
+# ========== Remove Previous Bot ==========
+hapus_bot_lama() {
+  echo -e "${orange}🔄 Menghapus bot lama...${neutral}"
+  systemctl stop botvpn 2>/dev/null
+  systemctl disable botvpn 2>/dev/null
+  rm -f /etc/systemd/system/botvpn.service
+  rm -rf /root/BotVPN
+  echo -e "${green}✅ Bot lama berhasil dihapus.${neutral}"
+}
+
+# ========== Install Dependencies ==========
+pasang_package() {
+  echo -e "${blue}🔧 Menginstal dependensi...${reset}"
+
+  apt update -y
+  apt install -y python3 python3-pip git curl jq dos2unix tmux
+  pip3 install python-telegram-bot==20.3
+
+  echo -e "${green}✅ Semua paket berhasil diinstal.${neutral}"
+}
+
+# ========== Clone Repo ==========
+clone_repo() {
+  echo -e "${green}📥 Cloning repo...${reset}"
+  git clone https://github.com/joytun21/jenuh.git /root/BotVPN
+  dos2unix /root/BotVPN/*.py /root/BotVPN/scripts/*.sh 2>/dev/null
+  pip3 install -r /root/BotVPN/requirements.txt
+}
+
+# ========== Setup Bot ==========
+setup_bot() {
+  echo -e "${orange}──────────────────────────────────────────────${neutral}"
+  echo -e "   ${green}::: KONFIGURASI BOT VPN TELEGRAM :::${neutral}"
+  echo -e "${orange}──────────────────────────────────────────────${neutral}"
+
+  read -rp "Masukkan Token Bot         : " token
+  read -rp "Masukkan Admin ID          : " adminid
+  read -rp "Masukkan ID Grup Telegram  : " groupid
+  read -rp "Masukkan Nama Store        : " namastore
+  read -rp "Masukkan DATA QRIS         : " dataqris
+  read -rp "Masukkan MERCHANT ID       : " merchantid
+  read -rp "Masukkan API KEY           : " apikey"
+
+  cat <<EOF > /root/BotVPN/.vars.json
+{
+  "BOT_TOKEN": "$token",
+  "USER_ID": "$adminid",
+  "GROUP_ID": "$groupid",
+  "NAMA_STORE": "$namastore",
+  "PORT": "50123",
+  "DATA_QRIS": "$dataqris",
+  "MERCHANT_ID": "$merchantid",
+  "API_KEY": "$apikey"
+}
+EOF
+
+  echo -e "${green}✅ Konfigurasi tersimpan.${neutral}"
+}
+
+# ========== Setup systemd service ==========
+setup_service() {
+  echo -e "${blue}⚙️ Men-setup systemd service...${reset}"
+
+  cat <<EOF > /etc/systemd/system/botvpn.service
+[Unit]
+Description=Bot VPN Telegram
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/BotVPN
+ExecStart=/usr/bin/python3 /root/BotVPN/bot.py
+Restart=on-failure
+RestartSec=5s
+StandardOutput=append:/root/BotVPN/bot.log
+StandardError=append:/root/BotVPN/bot.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable botvpn
+  systemctl start botvpn
+
+  echo -e "${green}✅ Bot sekarang dijalankan via systemd dan auto restart jika error.${neutral}"
+  echo -e "${yellow}📄 Log bisa dilihat di: /root/BotVPN/bot.log${neutral}"
+}
+
+# ========== EXECUTOR ==========
+if [[ ${1} == "start" ]]; then
+  hapus_bot_lama
+  pasang_package
+  clone_repo
+  setup_bot
+  setup_service
+else
+  echo -e "${red}❌ Gunakan perintah: ${yellow}start${neutral}"
+  exit 1
+fi
