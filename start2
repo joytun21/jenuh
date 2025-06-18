@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# ========== Warna ==========
+green="\e[32m"
+red="\e[31m"
+yellow="\e[33m"
+reset="\e[0m"
+
+# ========== Variabel Git Repo ==========
+REPO_URL="https://github.com/joytun21/jenuh.git"
+REPO_DIR="/root/BotVPN"
+
+# ========== Hapus Bot Lama ==========
+hapus_bot_lama() {
+  echo -e "${yellow}🧹 Menghapus bot lama...${reset}"
+  systemctl stop botvpn 2>/dev/null
+  systemctl disable botvpn 2>/dev/null
+  rm -f /etc/systemd/system/botvpn.service
+  rm -rf "$REPO_DIR"
+  echo -e "${green}✅ Bot lama dihapus.${reset}"
+}
+
+# ========== Install Dependensi ==========
+install_package() {
+  echo -e "${yellow}📦 Menginstal dependensi...${reset}"
+  apt update -y
+  apt install -y python3 python3-pip git curl jq dos2unix
+  pip3 install python-telegram-bot==20.3
+  echo -e "${green}✅ Selesai install dependensi.${reset}"
+}
+
+# ========== Clone Repo Bot ==========
+clone_repo() {
+  echo -e "${yellow}📁 Meng-clone repo bot...${reset}"
+  git clone "$REPO_URL" "$REPO_DIR"
+  echo -e "${green}✅ Repo bot berhasil di-clone.${reset}"
+}
+
+# ========== Setup Konfigurasi Bot ==========
+setup_bot() {
+  echo -e "${yellow}🛠️ Setup konfigurasi bot...${reset}"
+
+  read -rp "🟢 Masukkan Bot Token        : " token
+  read -rp "👑 Masukkan Admin ID         : " adminid
+  read -rp "👥 Masukkan ID Grup Telegram : " groupid
+  read -rp "🏪 Nama Store                : " namastore
+  read -rp "📱 DATA QRIS                 : " dataqris
+  read -rp "🏷️  MERCHANT ID              : " merchantid
+  read -rp "🔑 API KEY                   : " apikey
+
+  cat <<EOF >"$REPO_DIR/.vars.json"
+{
+  "BOT_TOKEN": "$token",
+  "USER_ID": "$adminid",
+  "GROUP_ID": "$groupid",
+  "NAMA_STORE": "$namastore",
+  "PORT": "50123",
+  "DATA_QRIS": "$dataqris",
+  "MERCHANT_ID": "$merchantid",
+  "API_KEY": "$apikey"
+}
+EOF
+
+  echo -e "${green}✅ Konfigurasi disimpan.${reset}"
+}
+
+# ========== Setup systemd ==========
+setup_service() {
+  cat <<EOF >/etc/systemd/system/botvpn.service
+[Unit]
+Description=Bot VPN Telegram
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$REPO_DIR
+ExecStart=/usr/bin/python3 $REPO_DIR/bot.py
+Restart=always
+RestartSec=5
+StandardOutput=append:$REPO_DIR/bot.log
+StandardError=append:$REPO_DIR/bot.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable botvpn
+  systemctl start botvpn
+
+  echo -e "${green}🚀 Bot berhasil dijalankan!${reset}"
+  echo -e "${yellow}📄 Cek log: tail -f $REPO_DIR/bot.log${reset}"
+}
+
+# ========== Eksekusi ==========
+if [[ $1 == "start" ]]; then
+  hapus_bot_lama
+  install_package
+  clone_repo
+  setup_bot
+  setup_service
+else
+  echo -e "${red}❌ Gunakan perintah: bash install.sh start${reset}"
+  exit 1
+fi
